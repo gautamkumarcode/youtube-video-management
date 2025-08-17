@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import express from "express";
 import { google } from "googleapis";
 import jwt from "jsonwebtoken";
+import TokenManager from "../utils/TokenManager.js";
 
 dotenv.config();
 
@@ -180,9 +181,16 @@ router.post("/google/callback", async (req, res) => {
 		};
 
 		// Store YouTube tokens for API usage
-		process.env.YOUTUBE_ACCESS_TOKEN = tokens.access_token;
-		process.env.YOUTUBE_REFRESH_TOKEN = tokens.refresh_token;
-		console.log("🔐 YouTube tokens saved for API usage");
+		const tokensSaved = TokenManager.saveTokens({
+			access_token: tokens.access_token,
+			refresh_token: tokens.refresh_token,
+			expiry_date: tokens.expiry_date,
+			scope: "https://www.googleapis.com/auth/youtube", // Current scope
+		});
+
+		if (!tokensSaved) {
+			console.warn("⚠️ Warning: Failed to persist YouTube tokens");
+		}
 
 		// In production, store this in your database
 		// For now, we'll include it in the response for frontend to handle
@@ -228,9 +236,7 @@ router.get("/me", authenticateToken, (req, res) => {
 router.post("/logout", authenticateToken, async (req, res) => {
 	try {
 		// Clear YouTube tokens on logout
-		process.env.YOUTUBE_ACCESS_TOKEN = "";
-		process.env.YOUTUBE_REFRESH_TOKEN = "";
-		console.log("🔓 YouTube tokens cleared on logout");
+		TokenManager.clearTokens();
 
 		// In production, you might want to blacklist the token
 		// or remove it from your database
@@ -284,21 +290,15 @@ function authenticateToken(req, res, next) {
 // @access  Private
 router.get("/token-debug", authenticateToken, async (req, res) => {
 	try {
-		const hasTokens = !!(
-			process.env.YOUTUBE_ACCESS_TOKEN && process.env.YOUTUBE_REFRESH_TOKEN
-		);
+		const tokenStatus = TokenManager.getTokenStatus();
 
 		res.json({
 			success: true,
 			data: {
-				hasAccessToken: !!process.env.YOUTUBE_ACCESS_TOKEN,
-				hasRefreshToken: !!process.env.YOUTUBE_REFRESH_TOKEN,
-				accessTokenLength: process.env.YOUTUBE_ACCESS_TOKEN?.length || 0,
-				refreshTokenLength: process.env.YOUTUBE_REFRESH_TOKEN?.length || 0,
-				accessTokenPreview: process.env.YOUTUBE_ACCESS_TOKEN
-					? process.env.YOUTUBE_ACCESS_TOKEN.substring(0, 20) + "..."
-					: "None",
-				message: hasTokens ? "Tokens are available" : "No tokens found",
+				...tokenStatus,
+				message: tokenStatus.hasTokens
+					? "YouTube tokens are available"
+					: "No YouTube tokens found - please login",
 			},
 		});
 	} catch (error) {

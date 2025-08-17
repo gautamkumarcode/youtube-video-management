@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { google } from "googleapis";
+import TokenManager from "../utils/TokenManager.js";
 
 dotenv.config();
 
@@ -56,15 +57,37 @@ class YouTubeAuthManager {
 			process.env.YOUTUBE_REDIRECT_URI
 		);
 
-		if (process.env.YOUTUBE_ACCESS_TOKEN && process.env.YOUTUBE_REFRESH_TOKEN) {
+		// Use TokenManager to get tokens
+		const tokenStatus = TokenManager.getTokenStatus();
+
+		if (tokenStatus.hasTokens) {
 			oauth2Client.setCredentials({
 				access_token: process.env.YOUTUBE_ACCESS_TOKEN,
 				refresh_token: process.env.YOUTUBE_REFRESH_TOKEN,
 			});
+
+			// Set up automatic token refresh
+			oauth2Client.on("tokens", (tokens) => {
+				if (tokens.refresh_token) {
+					// Only update if we get a new refresh token
+					TokenManager.saveTokens({
+						access_token: tokens.access_token,
+						refresh_token: tokens.refresh_token,
+						expiry_date: tokens.expiry_date,
+					});
+				} else if (tokens.access_token) {
+					// Update just the access token if no refresh token
+					TokenManager.saveTokens({
+						access_token: tokens.access_token,
+						refresh_token: process.env.YOUTUBE_REFRESH_TOKEN,
+						expiry_date: tokens.expiry_date,
+					});
+				}
+			});
 		} else {
 			// If no tokens are available, throw a specific error
 			throw new Error(
-				"YouTube authentication tokens not found. Please run the authentication setup script."
+				"YouTube authentication tokens not found. Please login to authorize YouTube access."
 			);
 		}
 
@@ -264,16 +287,17 @@ class YouTubeService {
 		try {
 			const validatedVideoId = this.validateVideoId(videoId);
 
-			// Check if authentication tokens are available
-			if (
-				!process.env.YOUTUBE_ACCESS_TOKEN ||
-				!process.env.YOUTUBE_REFRESH_TOKEN
-			) {
+			// Check token status using TokenManager
+			const tokenStatus = TokenManager.getTokenStatus();
+			console.log("🔍 Token status for addComment:", tokenStatus);
+
+			if (!tokenStatus.hasTokens) {
 				throw new Error(
-					"YouTube authentication is required to add comments. Please set up OAuth2 tokens."
+					"YouTube authentication is required to add comments. Please login to authorize YouTube access."
 				);
 			}
 
+			console.log("🔧 Creating authenticated client for comment...");
 			const authenticatedClient = this.apiClient.createAuthenticatedClient();
 
 			if (!text || text.trim().length === 0) {
@@ -460,3 +484,4 @@ class YouTubeService {
 const youtubeServiceInstance = new YouTubeService();
 export default youtubeServiceInstance;
 export { YOUTUBE_ERRORS, YouTubeService };
+

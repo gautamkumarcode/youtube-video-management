@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.js";
 import eventLogRoutes from "./routes/eventLogs.js";
 import noteRoutes from "./routes/notes.js";
 import videoRoutes from "./routes/videos.js";
+import TokenManager from "./utils/TokenManager.js";
 
 dotenv.config();
 
@@ -104,6 +105,19 @@ const startServer = () => {
 const initializeApp = async () => {
 	try {
 		await connectDB();
+
+		// Load YouTube tokens from persistent storage
+		console.log("Loading YouTube tokens...");
+		TokenManager.loadTokens();
+
+		const tokenStatus = TokenManager.getTokenStatus();
+		if (tokenStatus.hasTokens) {
+			console.log("✅ YouTube tokens loaded successfully");
+		} else {
+			console.log(
+				"⚠️ No YouTube tokens found - login required for YouTube API functionality"
+			);
+		}
 
 		initializeMiddleware();
 
